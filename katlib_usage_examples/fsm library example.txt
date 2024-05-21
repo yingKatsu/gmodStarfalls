@@ -4,7 +4,7 @@
 --@includedir katlibs
 
 
-require("katlibs/serverinput.txt") --requires clientside
+require("katlibs/serverinput.txt") --requires clientside so put in shared scope
 
 if SERVER then
     require("katlibs/fsm.txt")
