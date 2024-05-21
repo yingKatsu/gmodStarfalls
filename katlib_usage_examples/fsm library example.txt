@@ -1,48 +1,145 @@
 --@name fsm library example
 --@author katsu
---@server
+--@shared
 --@includedir katlibs
 
-require("katlibs/fsm.txt")
-require("katlibs/timeutils.txt")
 
-thebuddy = hologram.create(chip():localToWorld(Vector(0,0,0)),chip():localToWorldAngles(Angle(0,0,0)),"models/hunter/blocks/cube025x025x025.mdl")
-thebuddy:setParent(chip())
+require("katlibs/serverinput.txt") --requires clientside
 
-local statemachine 
-statemachine = fsm_statecontroller:new("state1",{
-    ["state1"] = function()
-        print("create state1")
-
-        local movethebuddy = coroutine.wrap(function()
-            local tween = timeutils.newDTtween()
-            repeat
-                local finished = tween(2.5,function(Up)
-                    thebuddy:setPos(chip():localToWorld(Vector(0,0,60*Up)))
-                end)
-                coroutine.yield()
-            until(finished)
-
-            local tween = timeutils.newDTtween()
-            repeat
-                local finished = tween(5,function(Up)
-                    thebuddy:setPos(chip():localToWorld(Vector(0,60*Up,60)))
-                end)
-                coroutine.yield()
-            until(finished)
-        
-            statemachine:setState("state2")
-        end)
-        
-        return movethebuddy
-    end,
+if SERVER then
+    require("katlibs/fsm.txt")
+    require("katlibs/timeutils.txt")
     
-    ["state2"] = function()
-        print("create state2")        
+    thebuddy = hologram.create(chip():localToWorld(Vector(0,0,0)),chip():localToWorldAngles(Angle(0,0,0)),"models/hunter/blocks/cube025x025x025.mdl")
+    thebuddy:setParent(chip())
     
-        return function()
-            print("b")
-            statemachine:setState("state1")
-        end
-    end,
-})
+    local statemachine 
+    statemachine = fsm_statecontroller:new("movebloc",{ --starting stage, table of closure function lambdas that return functions
+        ["movebloc"] = function()
+            print("[create state movebloc]")
+            local movethebuddy = coroutine.wrap(function()
+                do --move up             
+                    --put stuff you want to run once between the repeat statements
+                    print("[movebloc] moving up")
+    
+                    local tween = timeutils.newDTtween() --once created, it will be based on the time it was created DT = (Time - SavedTime)
+                    --if you want it to restart from 0 you're gonna have to make a new DTtween
+                    
+                    repeat --put stuff you want to run over time here, in the repeat statement, which will end once the conditions are met
+                        local finished = tween(2.5,function(Up) --tween(length, delay or nil, function(0-1)
+                            local ef = Up^(1/3) --easing function!
+                            thebuddy:setPos(chip():localToWorld(Vector(0,0,60*ef)))
+                        end)
+                        coroutine.yield()
+                    until(finished) --tween returns true once it has reached the max value
+                    
+                end --i reccommend wrapping each of these little steps to your state in these do end statements
+                --this way all your variables will be local to only inside them and are discarded once you no longer need them (save memory!)
+                
+                do --move to the side
+                    print("[movebloc] moving side, then forward")
+    
+                    local tween = timeutils.newDTtween()
+                    
+                    repeat
+                        tween(5,function(Up)
+                            local ef = Up^3 
+                            thebuddy:setPos(chip():localToWorld(Vector(0,60*ef,60)))
+                        end)
+                        
+                        local finished = tween(2,5,function(Up) --after a delay of 5 seconds, start a dt event of 2 seconds
+                            thebuddy:setPos(chip():localToWorld(Vector(60*Up,60,60)))
+                        end)
+                        --you can have two tweens like this with one delayed to run after the other but i don't reccommend it (not optimal performance) 
+                        --it would be better to just make a new repeat block in the coroutine
+                        coroutine.yield()
+                    until(finished)
+                end
+                
+                do --wait for user input, what's next?
+                    print("press b to do a spin! or press n to wiggle. or type a in chat to see b")
+                    
+                    local nextStage = nil
+                    
+                    serverInput.listen(owner(),{KEY.B,KEY.N},function(key,down) --listen to owner keys but only specifically the b and n keys. think e2 runonKeys but with more control
+                        if down then --this callback will run on both key pressed and released
+                            if key == KEY.B then
+                                nextStage = "spin"
+                            elseif key == KEY.N then
+                                nextStage = "wiggle"
+                            end
+                        end
+                    end)
+                    
+                    hook.add("PlayerSay","listenChat",function(p,t) --you can also put hooks here
+                        if p == owner() and t == "a" then
+                            nextStage = "sayb"
+                            return true
+                        end
+                    end)
+                            
+                    repeat --stay in this loop until we have a next state
+                        coroutine.yield()
+                    until(nextStage ~= nil)
+    
+                    hook.remove("PlayerSay","listenChat")
+                    serverInput.stopListening(owner()) -- dont forget to clean up your hooks
+                    
+                    statemachine:setState(nextStage)
+                end
+            end)
+            return movethebuddy
+        end,
+        
+        ["spin"] = function()
+            print("[create state spin]")
+            local movethebuddy = coroutine.wrap(function()
+                do --spin        
+                    print("spinning")
+    
+                    local tween = timeutils.newDTtween()
+    
+                    repeat 
+                        local finished = tween(2.5,function(Up)
+                            thebuddy:setAngles(chip():localToWorldAngles(Angle(0,360*Up,0)))
+                        end)
+                        coroutine.yield()
+                    until(finished) 
+                    
+                    statemachine:setState("movebloc")
+                end
+            end)
+            return movethebuddy
+        end,
+            
+        ["wiggle"] = function()
+            print("[create state wiggle]")
+            local movethebuddy = coroutine.wrap(function()
+                do --wiggle         
+                    print("wiggling")
+    
+                    local tween = timeutils.newDTtween()
+    
+                    repeat 
+                        local finished = tween(2.5,function(Up) 
+                            thebuddy:setPos(chip():localToWorld(Vector(60,60+40*math.sin(10*3.14159*Up),60)))
+                        end)
+                        coroutine.yield()
+                    until(finished) 
+                    
+                    statemachine:setState("movebloc")
+                end
+            end)
+            return movethebuddy
+        end,
+        
+        ["sayb"] = function() --if your state is simple and doesn't do stuff over time or anything you can just do a normal lua closure
+            print("[create state sayb]")        
+    
+            return function()
+                print("b")
+                statemachine:setState("movebloc")
+            end
+        end,
+    })
+end
