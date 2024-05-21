@@ -1,4 +1,4 @@
---@name fsm
+--@name katlibs/fsm
 --@author katsu
 --@shared
 
