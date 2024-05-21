@@ -1,4 +1,4 @@
---@name timeutils
+--@name katlibs/timeutils
 --@author katsu
 --@shared
 timeutils = {}
