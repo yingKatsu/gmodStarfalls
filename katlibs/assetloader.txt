@@ -17,10 +17,6 @@ else
     local SIGNATURE_LOCALFILEHEADER = 0x04034B50
     local SIGNATURE_CENTRALDIRHEADER = 0x02014B50
 
-    if httpQueue == nil then
-        throw("katlib:assetloader| requires katlib:httpqueue")
-    end
-
     function assetloader.loadFromZip(zipdata,threaded)
         local stream = bit.stringstream(zipdata)
         local filePaths = {}
