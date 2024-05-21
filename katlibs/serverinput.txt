@@ -1,4 +1,4 @@
---@name serverInput
+--@name katlibs/serverInput
 --@author katsu
 --@shared
 
