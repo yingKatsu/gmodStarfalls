@@ -1,0 +1,76 @@
+--@name rt skybox example
+--@author katsu
+--@includedir katlibs
+
+//for death and bero
+
+if SERVER then
+    net.receive("kl:pm_missingperms",function()
+        print(net.readString())
+    end)
+else
+    require("katlibs/permissionmanager.txt")
+    require("katlibs/httpqueue.txt")
+    require("katlibs/assetloader.txt")
+    require("katlibs/skybox.txt")
+    require("katlibs/coroutineutils.txt")
+    
+    permissionManager.setupPerms({
+                                    "entities.setRenderProperty",
+                                })
+
+    function BOOT_CLIENTSIDE()       
+        httpQueue.get("https://dl.dropboxusercontent.com/s/dbbduyb5iba2gl9/cirno_fumo_sunset.zip?dl=1",function(httpdata) //this is where you import the zip folder
+            coroutineUtils.quotaWrap(0.1,assetloader.loadFromZip,{httpdata,true},function(assetPaths,rawData)
+            //this function unpacks the zip, and saves files to your sffiletemp (in assetPaths). txt files are special and also go in rawData
+                local sBMats = {
+                    ["Front"] = material.createFromImage(assetPaths["px.png"], ""),
+                    ["Back"] = material.createFromImage(assetPaths["nx.png"], ""),
+                    ["Right"] = material.createFromImage(assetPaths["pz.png"], ""),
+                    ["Left"] = material.createFromImage(assetPaths["nz.png"], ""),
+                    ["Top"] = material.createFromImage(assetPaths["py.png"], ""),
+                }
+                local newSB = RTSkybox:new(sBMats)
+
+                coroutineUtils.quotaWrap(0.1,mesh.createFromObj,{rawData["cirn.txt"],true,true},function(modelTab) 
+                //this is where the model gets loaded, inside is a callback function that gets called once when the model loads
+                    local modelMats = {
+                        material.createFromImage(assetPaths["cirn.jpg"], "")
+                    }
+                    newSB:setModelData(modelTab,modelMats)
+                    
+                    local M = Matrix()
+                    M:setTranslation(Vector(6000,0,-500))
+                    M:setScale(Vector(300))
+                    M:setAngles(Angle(0,0,0))
+                    newSB:setModelMatrix(M)
+                    
+                    newSB:setFog(0.9,Color(227, 155, 118),5000,10000) //fogDensity,fogColor,fogStart,fogEnd
+                end)
+                
+                ---------------------------------------------------------------------------------------------------------------------------------------------------------
+                
+                local sbholo = holograms.create(chip():localToWorld(Vector(0,0,24*1.8)), chip():localToWorldAngles(Angle(0,0,0)), "models/hunter/blocks/cube8x8x8.mdl")
+                sbholo:setScale(Vector(5,-5,1.8))
+                sbholo:setMaterial(newSB:getSBMat()) //any holo you create with this material will be a skybox render with no extra cost or screen count
+                sbholo:setParent(chip())
+                
+                hook.add("tick","",function() //update this stuff every tick after the model spawns
+                    newSB:setRenderOrigin(chip():getPos())
+
+                    local p = chip():worldToLocal(player():getPos()) //this segment of code make it so that it hides when ur not inside the aa bounds
+                    local inZone = math.abs(p.x) < 770 and math.abs(p.y) < 770 and p.z < 1440 and p.z > -10
+                    newSB:setDraw(true)
+                    
+                    local M = Matrix() //this makes the model speen
+                    M:setTranslation(Vector(6000,0,-500))
+                    M:setScale(Vector(300))
+                    M:setAngles(Angle(0,20*timer.systime(),0))
+                    newSB:setModelMatrix(M)
+                end)
+            end)
+        end)
+        
+    end
+    permissionManager.boot()
+end

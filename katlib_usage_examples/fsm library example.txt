@@ -1,0 +1,48 @@
+--@name fsm library example
+--@author katsu
+--@server
+--@includedir katlibs
+
+require("katlibs/fsm.txt")
+require("katlibs/timeutils.txt")
+
+thebuddy = hologram.create(chip():localToWorld(Vector(0,0,0)),chip():localToWorldAngles(Angle(0,0,0)),"models/hunter/blocks/cube025x025x025.mdl")
+thebuddy:setParent(chip())
+
+local statemachine 
+statemachine = fsm_statecontroller:new("state1",{
+    ["state1"] = function()
+        print("create state1")
+
+        local movethebuddy = coroutine.wrap(function()
+            local tween = timeutils.newDTtween()
+            repeat
+                local finished = tween(2.5,function(Up)
+                    thebuddy:setPos(chip():localToWorld(Vector(0,0,60*Up)))
+                end)
+                coroutine.yield()
+            until(finished)
+
+            local tween = timeutils.newDTtween()
+            repeat
+                local finished = tween(5,function(Up)
+                    thebuddy:setPos(chip():localToWorld(Vector(0,60*Up,60)))
+                end)
+                coroutine.yield()
+            until(finished)
+        
+            statemachine:setState("state2")
+        end)
+        
+        return movethebuddy
+    end,
+    
+    ["state2"] = function()
+        print("create state2")        
+    
+        return function()
+            print("b")
+            statemachine:setState("state1")
+        end
+    end,
+})
