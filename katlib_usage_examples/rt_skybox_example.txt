@@ -2,8 +2,6 @@
 --@author katsu
 --@includedir katlibs
 
-//for death and bero
-
 if SERVER then
     net.receive("kl:pm_missingperms",function()
         print(net.readString())
