@@ -1,5 +1,5 @@
 assetloader - zip unpacker for store zips (no compression)
-coroutineutils - functions to use with functions that are built around coroutines (pause function to meet cputime quota)
+coroutineutils - functions to use with functions that are built around coroutines (yield coroutine to meet cputime quota)
 fsm - finite state machine library using coroutines
 httpqueue - queue http requests to prevent hitting max request limit
 permissionmanager - load this before any library; dynamically makes sure that the clientside only loads once every library's specific needs are met
