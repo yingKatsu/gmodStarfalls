@@ -1,0 +1,279 @@
+--@author katsu
+--@server
+
+--this whole goddamnit is so fucking overengineered there is genuinely something fucking wrong with me
+
+local infiniteIndexMM
+infiniteIndexMM = function(t,k)
+    local newTab = {}
+    setmetatable(newTab,{["__index"]=infiniteIndexMM})
+    t[k] = newTab
+    return newTab
+end
+
+-------
+
+local netcode = setmetatable({}, {["__index"]=function(t,k) 
+    local empty = {} 
+    empty.cb = function() end
+    empty.getSize = function() return 0 end
+    empty.varArgs = {}
+    t[k] = empty
+    return empty
+end})
+
+local hashes = setmetatable({}, {["__index"]=function(t,k) 
+    t[k] = tonumber(crc(k))
+    return t[k]
+end})
+
+------------------------------------------------------------------------
+------- queue 
+local nwQueue = {
+    public = {},
+    private = {},
+}
+
+local newClientInit = {
+    public = false,
+    private = false,
+}
+
+local queueCoroutine = nil
+local function refreshQueue()
+    if queueCoroutine then return end
+
+    queueCoroutine = coroutine.wrap(function()
+        local function doQueue(netmsg,type)
+            local queue = nwQueue[type]
+            while #queue > 0 do
+                local entTab = queue[1]
+
+                local updateHash = entTab.updateHash or newClientInit[type]
+                local hash = entTab.hash
+                
+                local updateNetcode = entTab.updateNetcode or newClientInit[type]
+                local varArgs = entTab.varArgs
+                local nwTab = netcode[hash]
+
+                newClientInit[type] = false
+                
+                local messageSize = (updateHash and 33 or 1) + 13 + (updateNetcode and nwTab.getSize() or 1) --be able to send key (1 or 33) + entindex (13) + cbdata size (1 or cbdataSize)
+                messageSize = messageSize * 1.25 --leave some space for others
+                if messageSize > 80000 then throw("katlibs:entitynetworking: tried to network absurd amount of data in a single ent!") end
+                while messageSize > net.getBitsLeft() do coroutine.yield() end
+                
+                local ent = entTab.ent
+
+                if isValid(ent) then
+                    net.start(netmsg)
+                    
+                    net.writeBool(updateHash)
+                    if updateHash then
+                        net.writeUInt(hash,32)
+                    end
+                    
+                    net.writeBool(updateNetcode)
+                    if updateNetcode then
+                        nwTab.cb(unpack(varArgs))
+                    end
+                    
+                    net.writeUInt(ent:entIndex(),13)
+                    net.send(entTab.players)
+                end
+                table.remove(queue,1)
+            end
+        end
+        
+        doQueue("kl:en_pub","public")
+        doQueue("kl:en_pri","private")
+        
+        queueCoroutine = nil
+        hook.remove("think","kl:en_netQueue")
+    end)
+    hook.add("think","kl:en_netQueue",queueCoroutine)
+end
+------------------------------------------------------------------------
+--internals
+local lastNW = {}
+lastNW.public = {}
+lastNW.private = {playerGroup = 0}
+
+local function queueNWEnt(hash,ent,players,private,varArgs)
+    local tab = private and "private" or "public"
+    local function valuesChanged(hash,varArgs,private)
+        local last = lastNW[tab]
+
+        local playerGroup
+        if private then --check if any new players are being sent to privately; we don't care about people no longer being sent private ents
+            playerGroup = 0
+            for _,p in pairs(players) do
+                playerGroup = playerGroup + 2^(p:entIndex()-1)
+            end
+            
+            local newPlayers = bit.band(bit.bxor(playerGroup, last.playerGroup), playerGroup)
+            if newPlayers ~= 0 then
+                --print(math.intToBin(newPlayers))
+                --printTable(find.allPlayers())
+
+                lastNW[tab].playerGroup = playerGroup
+                return true, true
+            end
+        end
+        
+        return (last.hash ~= hash), (last.varArgs ~= varArgs)
+    end
+    local hashChanged, varArgsChanged = valuesChanged(hash,varArgs,private)
+    table.insert(nwQueue[tab],{
+        updateHash = hashChanged,
+        hash = hash,
+
+        updateNetcode = varArgsChanged,
+        varArgs = varArgs,
+
+        players = players,
+        ent = ent,
+    })
+
+    refreshQueue()
+    
+    lastNW[tab].hash = hash
+    lastNW[tab].varArgs = varArgs
+end
+
+function entitynetworking.setNetcode(key,netcodeCB,size)
+    local hash = hashes[key]
+    netcode[hash].cb = netcodeCB
+    
+    if isnumber(size) then
+        netcode[hash].getSize = function() return size end
+    elseif isfunction(size) then
+        netcode[hash].getSize = size
+    else
+        netcode[hash].getSize = function() return 0 end
+    end
+end
+
+function entitynetworking.setNetcodeArgs(key,...)
+    local hash = hashes[key]
+    netcode[hash].varArgs = {...}
+end
+
+local networkedEnts = {
+    entLookup = {},
+    plyLookup = setmetatable({},{["__index"]=infiniteIndexMM}),
+
+    public = setmetatable({},{["__index"]=infiniteIndexMM}),
+    addPublic = function(self,hash,ent)
+        local varArgs = netcode[hash].varArgs
+
+        self.public[hash][ent] = varArgs
+        self.entLookup[ent] = {
+            private = false,
+            hash = hash,
+        }
+        queueNWEnt(hash,ent,nil,false,varArgs)
+    end,
+    
+    private = setmetatable({},{["__index"]=infiniteIndexMM}),
+    addPrivate = function(self,players,hash,ent)
+        local varArgs = netcode[hash].varArgs
+        
+        for _,p in pairs(players) do
+            self.private[p][hash][ent] = varArgs
+            self.plyLookup[p][ent] = true
+        end
+
+        self.entLookup[ent] = {
+            private = true,
+            players = players,
+            hash = hash,
+        }
+        queueNWEnt(hash,ent,players,true,varArgs)
+    end,
+    
+    removeIfExists = function(self,ent)
+        local entTab = self.entLookup[ent]
+        if not entTab then return false end
+        
+        local private = entTab.private
+        local hash = entTab.hash
+
+        if private then
+            local players = entTab.players
+            
+            for _,p in pairs(players) do
+                self.private[p][hash][ent] = nil
+                self.plyLookup[p][ent] = nil
+                if table.count(self.private[p][hash]) == 0 then
+                    self.private[p][hash] = nil
+                end
+            end
+        else
+            self.public[hash][ent] = nil
+            if table.count(self.public[hash]) == 0 then
+                self.public[hash] = nil
+            end
+        end
+        
+        self.entLookup[ent] = nil
+    end,
+}
+
+local function forceUpdate()
+    newClientInit = {
+        public = true,
+        private = true,
+    }
+end
+
+hook.add("ClientInitialized","kl:en_ci",function(p)
+    forceUpdate()
+    for hash,entVarArgs in pairs(networkedEnts.public) do
+        for ent,varArgs in pairs(entVarArgs) do
+            queueNWEnt(hash,ent,p,false,varArgs)
+        end
+    end
+
+    for hash,entVarArgs in pairs(networkedEnts.private[p]) do
+        for ent,varArgs in pairs(entVarArgs) do
+            queueNWEnt(hash,ent,p,true,varArgs)
+        end
+    end
+end)
+
+hook.add("PlayerDisconnect","kl:en_pl",function(p)
+    for ent,_ in pairs(networkedEnts.private[p]) do
+        networkedEnts.entLookup[ent] = nil
+    end
+    networkedEnts.private[p] = nil
+    networkedEnts.plyLookup[p] = nil
+end)
+
+function entitynetworking.broadcast(key,e)
+    local hash = hashes[key]
+
+    e = e.entIndex and {e} or e
+    table.clearKeys(e)
+    
+    for _,ent in pairs(e) do
+        networkedEnts:addPublic(hash,ent)
+    end
+end
+
+function entitynetworking.send(players,key,e)
+    local hash = hashes[key]
+
+    players = players.entIndex and {players} or players
+    e = e.entIndex and {e} or e
+    table.clearKeys(e)
+
+    local varArgs = netcode[hash].varArgs
+    for _,ent in pairs(e) do
+        networkedEnts:addPrivate(players,hash,ent)
+    end
+end
+
+hook.add("EntityRemoved","kl:en_er",function(ent)       
+    networkedEnts:removeIfExists(ent)
+end)

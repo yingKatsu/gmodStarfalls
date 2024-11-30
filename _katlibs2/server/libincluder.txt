@@ -1,0 +1,52 @@
+--@name katlibs/libincluder
+--@author katsu
+--@server
+
+libIncluder = class("libIncluder")
+
+LIBREALM = {
+    SH = 1,
+    SV = 2,
+    CL = 3,
+    SH_OO = 4,
+    CL_OO = 5,
+}
+
+
+function libIncluder:initialize()
+    self.code = {}
+end
+
+function libIncluder:addScript(realm,...)
+    for _,script in pairs({...}) do
+        table.insert(self.code,{
+            realm = realm,
+            script = script,
+        })
+    end
+end
+
+local realmStatements = {
+    "true",
+    "SERVER",
+    "CLIENT",
+    "player() == owner()",
+    "CLIENT and player() == owner()",
+}
+
+function libIncluder:getCode(threaded)
+    local strTab = {}
+    
+    for i=1,#self.code do
+        table.insert(strTab,"if ") 
+        table.insert(strTab,realmStatements[self.code[i].realm])
+        table.insert(strTab," then\n")
+        table.insert(strTab,self.code[i].script)
+        table.insert(strTab,"\nend\n")
+        if threaded then
+            coroutine.yield()
+        end
+    end
+    table.insert(strTab,"--@shared")
+    return table.concat(strTab,"")
+end

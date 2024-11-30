@@ -1,0 +1,88 @@
+--@author katsu
+--@client
+
+local nullfunc = function() end
+
+local networkedEnts = setmetatable({}, {["__index"]=function(t,k) 
+    t[k] = {
+        initialize = nullfunc,
+        deinitialize = nullfunc,
+    }
+    return t[k]
+end})
+
+local CBs = setmetatable({}, {["__index"]=function(t,k) 
+    t[k] = {
+        netcode = nullfunc,
+        valid = nullfunc,
+        removed = nullfunc,
+    }
+    return t[k]
+end})
+
+function entitynetworking.setNetcode(key,CB)
+    CBs[tonumber(crc(key))].netcode = CB
+end
+
+function entitynetworking.setInitializedCB(key,CB)
+    CBs[tonumber(crc(key))].valid = CB
+end
+
+function entitynetworking.setRemovedCB(key,CB)
+    CBs[tonumber(crc(key))].removed = CB
+end
+
+
+local lastNW = {}
+lastNW.public = {}
+lastNW.private = {}
+local function receive(type)
+    local cachedVars = lastNW[type]
+
+    local updateHash = net.readBool()
+    local hash = updateHash and net.readUInt(32) or cachedVars.hash
+    local updateNetcode = net.readBool()
+    local netcodeReturns = updateNetcode and ({CBs[hash].netcode(eid)} or {}) or cachedVars.netcodeReturns
+    local eid = net.readUInt(13)
+
+    networkedEnts[eid] = {
+        active = false,
+        initialize = function(self)
+            if self.active then return end
+            self.active = true
+            CBs[hash].valid(eid,unpack(netcodeReturns))
+        end,
+        deinitialize = function(self)
+            if self.active then
+                CBs[hash].removed(eid,unpack(netcodeReturns))
+            end
+            networkedEnts[eid] = nil
+        end
+    }
+
+    if isValid(entity(eid)) then
+        networkedEnts[eid]:initialize()
+    end
+    
+    lastNW[type] = {
+        hash = hash,
+        netcodeReturns = netcodeReturns,
+    }
+end
+
+net.receive("kl:en_pub",function()
+    receive("public")
+end)
+net.receive("kl:en_pri",function()
+    receive("private")
+end)
+
+hook.add("NetworkEntityCreated","kl:en_awaitentity",function(ent)
+    local eid = ent:entIndex()
+    networkedEnts[eid]:initialize()
+end)
+
+net.receive("kl:en_er",function()
+    local eid = net.readInt(13)
+    networkedEnts[eid]:deinitialize()
+end)

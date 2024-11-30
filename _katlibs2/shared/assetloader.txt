@@ -1,0 +1,21 @@
+--@author katsu
+--@shared
+--@include _katlibs2/shared/_oo/assetloader.txt
+--@include _katlibs2/shared/_cl/assetloader.txt
+
+if CLIENT then
+    if not httpQueue then throw("katlibs:assetloader requires httpQueue loaded before!") end
+
+    if permissionManager then permissionManager.setupPerms({"file.writeTemp"}) end
+    assetloader = {}
+    assetloader.assetPaths = {}
+    assetloader.THREADED_MAXQUOTA = function(ratio)
+        return function(finished,thread)
+            while chip():getQuotaAverage() < chip():getQuotaMax() * ratio do
+                if thread() then break end
+            end
+        end
+    end
+    require("_katlibs2/shared/_cl/assetloader.txt")
+end
+if player() == owner() then require("_katlibs2/shared/_oo/assetloader.txt") end

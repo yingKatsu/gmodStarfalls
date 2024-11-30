@@ -1,0 +1,109 @@
+--@name katlibs/p2mmanager
+--@author katsu
+--@server
+
+--[[
+    ||WIP, NOT IN A WORKING STATE||
+
+    data format
+    
+    self.substructures = {
+        ["substructurekey1"] = {
+            ["material1"] = {
+                ["color1"] = {
+                    ["models"] = {},
+                    ["pos"] = {},
+                    ["ang"] = {},
+                },
+                ["color2"] = {
+                    ["models"] = {},
+                    ["pos"] = {},
+                    ["ang"] = {},
+                },
+            },
+            ["material2"] = {
+                ["color1"] = {
+                    ["models"] = {},
+                    ["pos"] = {},
+                    ["ang"] = {},
+                },
+                ["color2"] = {
+                    ["models"] = {},
+                    ["pos"] = {},
+                    ["ang"] = {},
+                },
+            },
+        },
+        ["substructurekey2"] = {
+            ["material1"] = {
+            etc.
+            |
+            v
+    }c
+]]
+
+if filenetworking == nil then
+    throw("katlibs:multiholo requires filenetworking loaded before!")
+end
+
+p2mmanager = class("katlib_p2mmanager")
+
+function p2mmanager:initialize(pos,ang,filepath)
+    --load previous file and data structure init
+    self.p2ment = nil
+
+    filenetworking.loadFile(filepath,function(data)
+        if data ~= nil then --load
+            self.substructures = von.deserialize(bit.decompress(self.substructures))
+            self:build()
+        else --new file
+            self.substructures = {}
+            self:save()
+        end
+    end)
+
+    self.filepath = filepath
+    self.pos = self.pos
+    self.ang = self.ang
+end
+
+function p2mmanager:save()
+    --save prop data to file
+    saveFile(path,bit.compress(von.serialize(self.substructures)))
+end
+
+function p2mmanager:mergeSubstructure(substructureKey,props)
+    --save prop data and push to p2m stack
+    
+end
+
+function p2mmanager:separateSubstructure(substructureKey)
+    --respawn props
+
+end
+
+function p2mmanager:build()
+    --update p2m
+    if self.p2ment then
+        self.p2ment:remove()
+    end
+
+    local controllers = {}
+    setmetatable(controllers, {["__index"]=function(t,k) local newTab = {} t[k] = newTab return newTab end})
+    
+    for _,substructure in pairs(self.substructures) do
+        for mat,matTab in pairs(substructure) do
+            for color,data in pairs(matTab) do
+                if controllers[mat] and controllers[mat][color] then
+                    table.add(controllers[mat][color].models,data.models)
+                    table.add(controllers[mat][color].pos,data.pos)
+                    table.add(controllers[mat][color].ang,data.ang)
+                else
+                    controllers[mat][color] = data
+                end
+            end
+        end
+    end
+
+    self.p2ment = p2m.create(#controllers, self.pos, self.ang)
+end

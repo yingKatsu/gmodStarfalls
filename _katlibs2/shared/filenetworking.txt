@@ -1,0 +1,18 @@
+--@author katsu
+--@shared
+--@include _katlibs2/shared/_oo/filenetworking.txt
+--@include _katlibs2/shared/_sv/filenetworking.txt
+
+--[[
+library only handles up to 8.3 kb files (netcode doesnt stream/chunk)
+if i ever need more i will write streaming netcode for this lib
+]]
+
+filenetworking = {}
+
+local function err() throw("katlibs:filenetworking is an owner-only library!") end
+setmetatable(filenetworking, {["__index"]=function() return err end})
+
+if player() ~= owner() then return end
+require("_katlibs2/shared/_oo/filenetworking.txt")
+if SERVER then require("_katlibs2/shared/_sv/filenetworking.txt") end

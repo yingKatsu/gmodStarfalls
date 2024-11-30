@@ -1,0 +1,10 @@
+--@author katsu
+--@shared
+--@include _katlibs2/shared/_sv/entitynetworking.txt
+--@include _katlibs2/shared/_cl/entitynetworking.txt
+
+entitynetworking = {}
+entitynetworking.keys = {}
+
+local realm = SERVER and "sv" or "cl"
+require("_katlibs2/shared/_"..realm.."/entitynetworking.txt")

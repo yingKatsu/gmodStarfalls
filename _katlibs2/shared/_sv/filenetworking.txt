@@ -1,0 +1,67 @@
+--@author katsu
+--@server
+  
+--loading
+filenetworking = {}
+local cbfuncs = {}
+
+local function loadFile(path,cbfunc)
+    net.start("kl:fn_clfilerequest")
+    net.writeString(path)
+    net.send(owner())
+    
+    cbfuncs[path] = cbfunc
+end
+
+net.receive("kl:fn_loadedfile",function()
+    local path = net.readString()
+    local fileSize = net.readUInt(16)
+    local data = net.readData(fileSize)
+    
+    cbfuncs[path](data)
+    cbfuncs[path] = nil
+end)
+
+net.receive("kl:fn_loadedfile_missing",function()
+    cbfuncs[path](nil)
+    cbfuncs[path] = nil
+end)
+
+--saving
+local function saveFile(path,data)
+    local fileSize = #data
+
+    networkFile("kl:fn_clfilesave",path,data,fileSize)
+end
+
+--pre client init bullshit
+local preclientQueue = {}
+
+filenetworking.loadFile = function(...)
+    table.insert(preclientQueue,{
+        func = loadFile,
+        args = {...},
+    })
+end
+
+filenetworking.saveFile = function(...)
+    table.insert(preclientQueue,{
+        func = saveFile,
+        args = {...},
+    })
+end
+
+hook.add("ClientInitialized","kl:fn_ownerloaded",function(p)
+    if p == owner() then
+        filenetworking.loadFile = loadFile
+        filenetworking.saveFile = saveFile
+        
+        for _,v in pairs(preclientQueue) do
+            v.func(unpack(v.args))
+        end
+        
+        preclientQueue = nil
+        
+        hook.remove("ClientInitialized","kl:fn_ownerloaded")
+    end
+end)

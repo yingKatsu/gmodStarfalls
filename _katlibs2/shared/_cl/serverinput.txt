@@ -1,0 +1,53 @@
+--@author katsu
+--@client
+
+if permissionManager then
+    permissionManager.setupPerms({
+                                    "input",
+                                })
+end
+
+local keys = {}
+
+net.receive("kl:si_listen",function()
+    local hasPermission = hasPermission("input")
+
+    net.start("kl:si_newListenerResponse")
+    net.writeEntity(player())
+    net.writeBool(hasPermission)
+    net.send()
+    
+    if hasPermission then
+        local numKeys = net.readUInt(7)
+        
+        for i=1,numKeys do
+            keys[net.readUInt(7)] = true
+        end
+
+        hook.add("inputPressed","kl:si_ip",function(k)
+            if keys[k] then
+                net.start("kl:si_key")
+                net.writeBool(true)
+                net.writeEntity(player())
+                net.writeUInt(k,7)
+                net.send()
+            end
+        end)
+        
+        hook.add("inputReleased","kl:si_ir",function(k)
+            if keys[k] then
+                net.start("kl:si_key")
+                net.writeBool(false)
+                net.writeEntity(player())
+                net.writeUInt(k,7)
+                net.send()
+            end
+        end)
+    end
+end)
+
+net.receive("kl:si_stopListen",function()
+    keys = {}
+    hook.remove("inputPressed","kl:si_ip")
+    hook.remove("inputReleased","kl:si_ir")
+end)
